@@ -38,7 +38,7 @@ export function Car() {
   });
 
   return (
-    <Group>
+    <group>
       <PerspectiveCamera
         makeDefault
         position={[0, 5, 10]}
@@ -49,8 +49,8 @@ export function Car() {
         args={[1, 0.5, 2]} // width, height, depth
         position={[0, 0.25, 0]}
       >
-        <MeshStandardMaterial color="red" />
+        <meshStandard color="red" />
       </Box>
-    </Group>
+    </group>
   );
 }

@@ -1,5 +1,6 @@
-import { Canvas } from '@react-three/fiber';
+import { Canvas, type ThreeElements } from '@react-three/fiber';
 import { Environment, Grid } from '@react-three/drei';
+
 import { Car } from './Car';
 
 export function Game() {

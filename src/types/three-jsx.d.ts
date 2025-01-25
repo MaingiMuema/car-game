@@ -1,11 +1,21 @@
-import { MeshStandardMaterial, AmbientLight, DirectionalLight } from 'three';
+import { DirectionalLight, AmbientLight, Group, MeshStandardMaterial } from 'three';
 import { Object3DNode } from '@react-three/fiber';
 
 declare module '@react-three/fiber' {
   interface ThreeElements {
-    group: Object3DNode<THREE.Group, typeof THREE.Group>;
-    meshStandardMaterial: Object3DNode<THREE.MeshStandardMaterial, typeof MeshStandardMaterial>;
-    ambientLight: Object3DNode<THREE.AmbientLight, typeof THREE.AmbientLight>;
-    directionalLight: Object3DNode<THREE.DirectionalLight, typeof THREE.DirectionalLight>;
+    directionalLight: Object3DNode<DirectionalLight, typeof DirectionalLight>;
+    ambientLight: Object3DNode<AmbientLight, typeof AmbientLight>;
+    group: Object3DNode<Group, typeof Group>;
+    meshStandardMaterial: Object3DNode<MeshStandardMaterial, typeof MeshStandardMaterial>;
   }
 }
+
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      directionalLight: Object3DNode<DirectionalLight, typeof DirectionalLight>
+    }
+  }
+}
+
+extend({ DirectionalLight });
