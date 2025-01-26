@@ -2,8 +2,8 @@
 
 import { usePlane } from '@react-three/cannon';
 import { Mesh } from 'three';
-import { useLoader } from '@react-three/fiber';
-import { RepeatWrapping, TextureLoader } from 'three';
+import { useFrame } from '@react-three/fiber';
+import { useRef } from 'react';
 
 export default function Ground() {
   const [ref] = usePlane<Mesh>(() => ({
@@ -16,32 +16,45 @@ export default function Ground() {
     },
   }));
 
-  // Load and configure textures
-  const [
-    roughnessMap,
-    normalMap,
-  ] = useLoader(TextureLoader, [
-    '/textures/ground_roughness.jpg',
-    '/textures/ground_normal.jpg',
-  ]);
-
-  // Configure texture wrapping and repeat
-  [roughnessMap, normalMap].forEach(texture => {
-    texture.wrapS = texture.wrapT = RepeatWrapping;
-    texture.repeat.set(50, 50);
-  });
+  // Create a grid pattern for the ground
+  const gridSize = 100;
+  const gridDivisions = 20;
 
   return (
-    <mesh ref={ref} receiveShadow>
-      <planeGeometry args={[1000, 1000]} />
-      <meshStandardMaterial
-        color="#1a1a1a"
-        roughnessMap={roughnessMap}
-        normalMap={normalMap}
-        normalScale={[0.2, 0.2]}
-        metalness={0.2}
-        roughness={0.8}
-      />
-    </mesh>
+    <>
+      {/* Main ground */}
+      <mesh ref={ref} receiveShadow>
+        <planeGeometry args={[1000, 1000]} />
+        <meshStandardMaterial
+          color="#1a1a1a"
+          metalness={0.2}
+          roughness={0.8}
+          envMapIntensity={0.5}
+        />
+      </mesh>
+
+      {/* Grid overlay */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.48, 0]}>
+        <planeGeometry args={[gridSize, gridSize, gridDivisions, gridDivisions]} />
+        <meshStandardMaterial
+          color="#333333"
+          wireframe
+          transparent
+          opacity={0.3}
+        />
+      </mesh>
+
+      {/* Center marker */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.47, 0]}>
+        <ringGeometry args={[0.5, 1, 32]} />
+        <meshStandardMaterial
+          color="#ff4444"
+          emissive="#ff4444"
+          emissiveIntensity={0.5}
+          transparent
+          opacity={0.7}
+        />
+      </mesh>
+    </>
   );
 }
