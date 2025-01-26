@@ -1,15 +1,5 @@
-'use client';
+import { CarGame } from "../components/CarGame";
 
-import dynamic from 'next/dynamic';
-
-const Game = dynamic(() => import('../components/Game').then((mod) => mod.Game), {
-  ssr: false
-});
-
-export default function Home() {
-  return (
-    <main>
-      <Game />
-    </main>
-  );
+export default function GamePage() {
+  return <CarGame />;
 }

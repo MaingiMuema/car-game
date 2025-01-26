@@ -19,3 +19,19 @@ body {
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.overlay {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  color: white;
+  font-family: Arial;
+  font-size: 24px;
+  pointer-events: none;
+}
+
+.game-over {
+  font-size: 48px;
+  color: red;
+  margin-top: 20px;
+}
