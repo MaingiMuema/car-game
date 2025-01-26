@@ -1,6 +1,9 @@
+'use client';
+
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { KeyboardControls } from '@react-three/drei';
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -11,13 +14,22 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
     <html lang="en">
       <body className={`${inter.variable} antialiased`}>
-        {children}
+        <KeyboardControls
+          map={[
+            { name: 'forward', keys: ['ArrowUp', 'w', 'W'] },
+            { name: 'backward', keys: ['ArrowDown', 's', 'S'] },
+            { name: 'left', keys: ['ArrowLeft', 'a', 'A'] },
+            { name: 'right', keys: ['ArrowRight', 'd', 'D'] },
+          ]}
+        >
+          {children}
+        </KeyboardControls>
       </body>
     </html>
   );
