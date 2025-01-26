@@ -2,22 +2,42 @@
 'use client'
 import { useState, useEffect, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, Text, useGLTF, Environment, Effects, Stars } from "@react-three/drei";
+import { OrbitControls, Text, useGLTF, Environment, Effects, Stars, Html } from "@react-three/drei";
 import * as THREE from "three";
 
 interface GameState {
   score: number;
   isPlaying: boolean;
   gameOver: boolean;
+  lap: number;
+  checkpoint: number;
+  raceTime: number;
+  bestLapTime: number;
+  speed: number;
 }
+
+interface Checkpoint {
+  position: [number, number, number];
+  rotation: [number, number, number];
+}
+
+const CHECKPOINTS: Checkpoint[] = [
+  { position: [0, 0.5, -8], rotation: [0, 0, 0] },
+  { position: [8, 0.5, -8], rotation: [0, Math.PI / 2, 0] },
+  { position: [8, 0.5, 8], rotation: [0, Math.PI, 0] },
+  { position: [-8, 0.5, 8], rotation: [0, -Math.PI / 2, 0] },
+];
 
 const Car = ({ gameState, setGameState }: { gameState: GameState; setGameState: (state: GameState) => void }) => {
   const carRef = useRef<THREE.Mesh>(null);
-  const [speed, setSpeed] = useState(0);
   const [steering, setSteering] = useState(0);
+  const [throttle, setThrottle] = useState(0);
+  const [brake, setBrake] = useState(0);
   const [position, setPosition] = useState(new THREE.Vector3(0, 0.5, 0));
+  const [velocity, setVelocity] = useState(new THREE.Vector3(0, 0, 0));
   const [engineSound] = useState(() => new Audio('/engine.mp3'));
   const [driftSound] = useState(() => new Audio('/drift.mp3'));
+  const lastUpdateTime = useRef(Date.now());
   
   // Particle system for speed effect
   const particles = useRef<THREE.Points>(null);
@@ -25,7 +45,6 @@ const Car = ({ gameState, setGameState }: { gameState: GameState; setGameState: 
   const particlePositions = new Float32Array(particleCount * 3);
   
   useEffect(() => {
-    // Initialize particle positions
     for (let i = 0; i < particleCount * 3; i += 3) {
       particlePositions[i] = Math.random() * 10 - 5;
       particlePositions[i + 1] = Math.random() * 10;
@@ -33,63 +52,112 @@ const Car = ({ gameState, setGameState }: { gameState: GameState; setGameState: 
     }
   }, []);
 
+  const checkCheckpoint = () => {
+    const currentCheckpoint = CHECKPOINTS[gameState.checkpoint];
+    const distance = new THREE.Vector3(...currentCheckpoint.position).distanceTo(position);
+    
+    if (distance < 3) {
+      if (gameState.checkpoint === CHECKPOINTS.length - 1) {
+        // Complete lap
+        const lapTime = gameState.raceTime;
+        setGameState({
+          ...gameState,
+          checkpoint: 0,
+          lap: gameState.lap + 1,
+          bestLapTime: lapTime < gameState.bestLapTime || gameState.bestLapTime === 0 ? lapTime : gameState.bestLapTime,
+          raceTime: 0,
+        });
+      } else {
+        setGameState({
+          ...gameState,
+          checkpoint: gameState.checkpoint + 1,
+        });
+      }
+    }
+  };
+
   useFrame((_, delta) => {
     if (!carRef.current || !gameState.isPlaying) return;
 
-    // Enhanced physics
-    const maxSpeed = 0.2;
-    const acceleration = 0.015;
-    const friction = 0.985;
-    const maxSteering = 0.08;
-    const driftFactor = Math.abs(speed) > 0.1 ? 1.2 : 1;
+    const currentTime = Date.now();
+    const deltaTime = (currentTime - lastUpdateTime.current) / 1000;
+    lastUpdateTime.current = currentTime;
 
-    // Update position with drift physics
-    const newPosition = position.clone();
-    const direction = new THREE.Vector3(
-      Math.sin(carRef.current.rotation.y) * driftFactor,
+    // Update race time
+    setGameState({
+      ...gameState,
+      raceTime: gameState.raceTime + deltaTime,
+      speed: velocity.length() * 100, // Convert to km/h
+    });
+
+    // Enhanced physics
+    const enginePower = 15;
+    const brakingPower = 20;
+    const maxSpeed = 30;
+    const drag = 0.95;
+    const angularDrag = 0.9;
+    const gripFactor = brake > 0 ? 0.7 : 0.95;
+
+    // Calculate forces
+    const forward = new THREE.Vector3(
+      Math.sin(carRef.current.rotation.y),
       0,
       Math.cos(carRef.current.rotation.y)
     );
-    newPosition.add(direction.multiplyScalar(speed));
+    
+    // Apply engine force
+    const engineForce = forward.multiplyScalar(throttle * enginePower * deltaTime);
+    velocity.add(engineForce);
 
-    // Collision detection with track boundaries
-    if (Math.abs(newPosition.x) > 9 || Math.abs(newPosition.z) > 9) {
-      setSpeed(speed * -0.5); // Bounce off walls
+    // Apply braking force
+    if (brake > 0) {
+      const brakeForce = velocity.clone().multiplyScalar(-brake * brakingPower * deltaTime);
+      velocity.add(brakeForce);
+    }
+
+    // Apply drag
+    velocity.multiplyScalar(drag);
+
+    // Apply grip (lateral friction)
+    const forwardVelocity = forward.multiplyScalar(forward.dot(velocity));
+    const lateralVelocity = velocity.clone().sub(forwardVelocity);
+    lateralVelocity.multiplyScalar(gripFactor);
+    velocity.copy(forwardVelocity).add(lateralVelocity);
+
+    // Update position
+    const newPosition = position.clone().add(velocity.clone().multiplyScalar(deltaTime));
+
+    // Track boundaries
+    const trackBounds = 9;
+    if (Math.abs(newPosition.x) > trackBounds || Math.abs(newPosition.z) > trackBounds) {
+      velocity.multiplyScalar(-0.5); // Bounce off walls
       driftSound.play();
     } else {
       carRef.current.position.copy(newPosition);
       setPosition(newPosition);
     }
 
-    // Update score based on speed
-    if (Math.abs(speed) > 0.05) {
-      setGameState({
-        ...gameState,
-        score: gameState.score + Math.floor(Math.abs(speed) * 100)
-      });
-    }
+    // Apply steering
+    const steeringPower = 2.5 * (1 - Math.min(velocity.length() / maxSpeed, 1) * 0.5);
+    carRef.current.rotation.y += steering * steeringPower * deltaTime;
 
-    // Apply steering with drift
-    carRef.current.rotation.y += steering * delta * (2 + Math.abs(speed));
+    // Check checkpoints
+    checkCheckpoint();
     
     // Update engine sound
-    engineSound.volume = Math.min(Math.abs(speed) / maxSpeed, 1);
-    engineSound.playbackRate = 1 + Math.abs(speed);
+    engineSound.volume = Math.min(velocity.length() / maxSpeed, 1) * 0.5;
+    engineSound.playbackRate = 1 + velocity.length() / maxSpeed;
 
     // Update particles
     if (particles.current) {
-      particles.current.rotation.y += delta * speed * 2;
+      particles.current.rotation.y += deltaTime * velocity.length();
       const positions = particles.current.geometry.attributes.position.array as Float32Array;
       for (let i = 0; i < particleCount * 3; i += 3) {
-        positions[i + 1] -= speed * 10;
+        positions[i + 1] -= velocity.length() * 10 * deltaTime;
         if (positions[i + 1] < 0) positions[i + 1] = 10;
       }
       particles.current.geometry.attributes.position.needsUpdate = true;
     }
-
-    // Apply physics
-    setSpeed((prev) => Math.max(-maxSpeed, Math.min(maxSpeed, prev * friction)));
-    setSteering((prev) => prev * 0.9);
   });
 
   useEffect(() => {
@@ -98,26 +166,59 @@ const Car = ({ gameState, setGameState }: { gameState: GameState; setGameState: 
       
       switch (e.key) {
         case "ArrowUp":
-          setSpeed((prev) => prev + 0.015);
+        case "w":
+          setThrottle(1);
           break;
         case "ArrowDown":
-          setSpeed((prev) => prev - 0.015);
+        case "s":
+          setBrake(1);
           break;
         case "ArrowLeft":
-          setSteering((prev) => prev + 0.03);
+        case "a":
+          setSteering(1);
           break;
         case "ArrowRight":
-          setSteering((prev) => prev - 0.03);
+        case "d":
+          setSteering(-1);
           break;
-        case " ": // Spacebar for handbrake
-          setSpeed((prev) => prev * 0.8);
-          driftSound.play();
+        case " ": // Handbrake
+          setBrake(1);
+          break;
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (!gameState.isPlaying) return;
+      
+      switch (e.key) {
+        case "ArrowUp":
+        case "w":
+          setThrottle(0);
+          break;
+        case "ArrowDown":
+        case "s":
+          setBrake(0);
+          break;
+        case "ArrowLeft":
+        case "a":
+          setSteering(0);
+          break;
+        case "ArrowRight":
+        case "d":
+          setSteering(0);
+          break;
+        case " ":
+          setBrake(0);
           break;
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
   }, [gameState.isPlaying]);
 
   return (
@@ -188,46 +289,73 @@ const Track = () => {
         </mesh>
       ))}
       
-      {/* Obstacles */}
-      {Array.from({ length: 5 }).map((_, i) => (
-        <mesh
-          key={i}
-          position={[
-            Math.sin(i * Math.PI * 0.4) * 5,
-            0.5,
-            Math.cos(i * Math.PI * 0.4) * 5
-          ]}
-          castShadow
-        >
-          <cylinderGeometry args={[0.3, 0.3, 1, 16]} />
-          <meshStandardMaterial color="#ffff00" emissive="#ffff00" emissiveIntensity={0.2} />
-        </mesh>
+      {/* Checkpoints */}
+      {CHECKPOINTS.map((checkpoint, i) => (
+        <group key={i}>
+          <mesh position={checkpoint.position} rotation={checkpoint.rotation}>
+            <boxGeometry args={[0.2, 2, 4]} />
+            <meshStandardMaterial color="#00ff00" transparent opacity={0.5} />
+          </mesh>
+          <Text
+            position={[checkpoint.position[0], checkpoint.position[1] + 2, checkpoint.position[2]]}
+            rotation={checkpoint.rotation}
+            color="#00ff00"
+            fontSize={0.5}
+          >
+            {i + 1}
+          </Text>
+        </group>
       ))}
     </group>
   );
 };
 
 const HUD = ({ gameState, setGameState }: { gameState: GameState; setGameState: (state: GameState) => void }) => {
+  const formatTime = (time: number) => {
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    const milliseconds = Math.floor((time % 1) * 1000);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
+  };
+
   return (
     <group position={[0, 0, -5]}>
       <Text
         position={[-2, 3, 0]}
         color="#ffffff"
-        fontSize={0.5}
+        fontSize={0.3}
         anchorX="left"
       >
-        {`Score: ${gameState.score}`}
+        {`Lap: ${gameState.lap + 1}/3\nCheckpoint: ${gameState.checkpoint + 1}/${CHECKPOINTS.length}\nSpeed: ${Math.round(gameState.speed)} km/h\nTime: ${formatTime(gameState.raceTime)}\nBest Lap: ${gameState.bestLapTime > 0 ? formatTime(gameState.bestLapTime) : 'N/A'}`}
       </Text>
       
       {!gameState.isPlaying && (
-        <Text
-          position={[0, 0, 0]}
-          color="#ffffff"
-          fontSize={0.5}
-          onClick={() => setGameState({ ...gameState, isPlaying: true, score: 0 })}
-        >
-          {gameState.score > 0 ? 'Game Over - Click to Restart' : 'Click to Start'}
-        </Text>
+        <>
+          <Text
+            position={[0, 0, 0]}
+            color="#ffffff"
+            fontSize={0.5}
+            onClick={() => setGameState({
+              score: 0,
+              isPlaying: true,
+              gameOver: false,
+              lap: 0,
+              checkpoint: 0,
+              raceTime: 0,
+              bestLapTime: 0,
+              speed: 0
+            })}
+          >
+            {gameState.lap > 0 ? 'Race Complete! Click to Restart' : 'Click to Start'}
+          </Text>
+          <Text
+            position={[0, -1, 0]}
+            color="#ffffff"
+            fontSize={0.3}
+          >
+            Controls: WASD or Arrow Keys to drive\nSpacebar for handbrake
+          </Text>
+        </>
       )}
     </group>
   );
@@ -237,7 +365,12 @@ const GameScene = () => {
   const [gameState, setGameState] = useState<GameState>({
     score: 0,
     isPlaying: false,
-    gameOver: false
+    gameOver: false,
+    lap: 0,
+    checkpoint: 0,
+    raceTime: 0,
+    bestLapTime: 0,
+    speed: 0
   });
 
   return (
